@@ -1,0 +1,442 @@
+<head>
+    <title>Determinant Tic-Tac-Toe</title>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <script>
+        const WIDTH = 640;
+        const HEIGHT = 480;
+        const PADDING = 10;
+        const SIZE = (HEIGHT-2*PADDING)/3;
+        const TOPLEFT = {x:WIDTH/2-3*SIZE/2,y:PADDING};
+        const TEXTSIZE = 128;
+        const MENU=0,PLAYING=1,GAMEOVER=2;
+        const PLAYER=0,RANDOM=1,MINIMAX=2;
+        const PLAYDELAY = 100;
+        var canvas;
+        //Board is 9 integers [-1,1]
+        var startingBoard = [-1,-1,-1,-1,-1,-1,-1,-1,-1];
+        var turn = 1;
+        var pendingMove = -1;
+        var players = [-1,-1];
+        //Should start at MENU
+        var gameState = MENU;
+        var currentBoard = [...startingBoard];
+        var winner;
+        var canWin = false;
+        var canStartGame;
+
+        //Menu stuff
+        var playerSelectables = [
+            {
+                x:WIDTH/2-225-PADDING,
+                y:HEIGHT-PADDING*4-150,
+                w:150,
+                h:75,
+                text:"Player",
+                selection:PLAYER,
+                overrideColor:false
+            },
+            {
+                x:WIDTH/2-75,
+                y:HEIGHT-PADDING*4-150,
+                w:150,
+                h:75,
+                text:"Random",
+                selection:RANDOM,
+                overrideColor:false
+            },
+            {
+                x:WIDTH/2+75+PADDING,
+                y:HEIGHT-PADDING*4-150,
+                w:150,
+                h:75,
+                text:"Minimax",
+                selection:MINIMAX,
+                overrideColor:false
+            }
+        ];
+        var selectionSpots = [
+            {
+                x:WIDTH/2-150-75,
+                y:HEIGHT/3-TEXTSIZE/2,
+                w:150,
+                h:75,
+                current:-1,
+                selectionSlot:0,
+            },
+            {
+                x:WIDTH/2+75,
+                y:HEIGHT/3-TEXTSIZE/2,
+                w:150,
+                h:75,
+                current:-1,
+                selectionSlot:1
+            }
+        ];
+        var currentPlayerSelected = -1;
+
+        function randint(low, high){
+            return Math.floor(Math.random()*(high - low + 1)) + low;
+        }
+        function setup(){
+            canvas = createCanvas(WIDTH,HEIGHT);
+            onEnterState(gameState);
+            strokeWeight(4);
+        }
+        function setGameState(state){
+            gameState=state;
+            onEnterState(state);
+        }
+        //State->void
+        function onEnterState(state){
+            switch(state){
+                case PLAYING:
+                    currentBoard = [...startingBoard];
+                    canWin=false;
+                    canvas.style('cursor','auto');
+                    pendingMove=-1;
+                    turn=1;
+                    onChangeTurn(turn);
+                    break;
+                case GAMEOVER:
+                    winner = getWinner(currentBoard);
+                    break;
+                case MENU:
+                    currentPlayerSelected=-1;
+                    canStartGame=false;
+                    selectionSpots[0].current=-1;
+                    selectionSpots[1].current=-1;
+                    break;
+            }
+        }
+        //Int->void
+        function onChangeTurn(turn){
+            switch(players[turn]){
+                case PLAYER:
+                    break;
+                case RANDOM:
+                    setTimeout(function(){pendingMove = randomValidMove(currentBoard)},PLAYDELAY);
+                    break;
+                case MINIMAX:
+                    setTimeout(function(){pendingMove = chooseAIMove(currentBoard,turn,9)},PLAYDELAY);
+                    break;
+            }
+        }
+        function draw(){
+            if(gameState==PLAYING){
+                background('#feffe9');
+                drawBoard(currentBoard);
+                if(canWin){
+                    textSize(TEXTSIZE/8);
+                    fill(255,255,255);
+                    var canWinText = "I can win, guaranteed.";
+                    text(canWinText,WIDTH-textWidth(canWinText)-PADDING/2,HEIGHT-PADDING/2);
+                }
+                if(pendingMove!=-1){
+                    // console.log("Pending move activated");
+                    currentBoard = getNextBoard(currentBoard,turn,pendingMove);
+                    turn=(turn+1)%players.length;
+                    pendingMove=-1;
+                    onChangeTurn(turn);
+                    if(boardFull(currentBoard)){
+                        drawBoard(currentBoard);
+                        setGameState(GAMEOVER);
+                    }
+                }
+            }else if(gameState==GAMEOVER){
+                textSize(TEXTSIZE);
+                fill(winner==1?"#2061ab":"#db3f0b");
+                var textStr = winner+"'s Win!";
+                text(textStr,WIDTH/2-textWidth(textStr)/2,HEIGHT/2);
+            }else if(gameState==MENU){
+                background('#feffe9');
+                fill("#bfbfbf");
+                textSize(TEXTSIZE/2);
+                text("Vs.",WIDTH/2-textWidth("Vs.")/2,HEIGHT/3);
+                fill("#2061ab");
+                text("1",selectionSpots[0].x+selectionSpots[0].w/2-textWidth("1")/2,selectionSpots[0].y-PADDING/2);
+                fill("#db3f0b");
+                text("0",selectionSpots[1].x+selectionSpots[1].w/2-textWidth("0")/2,selectionSpots[1].y-PADDING/2);
+                drawPlayerSelectables();
+                drawSelectionSlots();
+                var anyIntersected=false;
+                for(var i = 0; i < playerSelectables.length; i++){
+                    if(intersects(mouseX,mouseY,playerSelectables[i])){
+                        canvas.style('cursor','grab');
+                        anyIntersected=true;
+                        break;
+                    }
+                }
+                for(var i = 0; i < selectionSpots.length; i++){
+                    if(intersects(mouseX,mouseY,selectionSpots[i])){
+                        canvas.style('cursor','crosshair');
+                        anyIntersected=true;
+                        break;
+                    }
+                }
+                if(canStartGame){
+                    textSize(40);
+                    fill("#bfbfbf");
+                    var textStr = "Click \"Vs.\" to Play!";
+                    text(textStr,WIDTH/2-textWidth(textStr)/2,HEIGHT/3+60+PADDING);
+                    if(mouseX>=selectionSpots[0].x+selectionSpots[0].w && mouseX<=selectionSpots[1].x && mouseY>=selectionSpots[0].y && mouseY <= selectionSpots[0].y+selectionSpots[0].h){
+                        canvas.style('cursor','grab');
+                        anyIntersected=true;
+                    }
+                }
+                if(!anyIntersected){
+                    canvas.style('cursor','auto');
+                }
+            }
+        }
+        //Int,Int->Int[-1,9]
+        function getSquareClicked(x,y){
+            if(x<TOPLEFT.x||x>WIDTH-TOPLEFT.x||y<TOPLEFT.y||y>HEIGHT-TOPLEFT.y){
+                return -1;
+            }
+            var nx = x-TOPLEFT.x;
+            var ny = y-TOPLEFT.y;
+            var ix = (nx-nx%SIZE)/SIZE;
+            var iy = (ny-ny%SIZE)/SIZE;
+            return 3*iy+ix;
+        }
+        function mouseClicked(){
+            if(gameState==PLAYING){
+                if(players[turn]==PLAYER){
+                    var clicked = getSquareClicked(mouseX,mouseY);
+                    if(isValidMove(currentBoard,clicked)){
+                        pendingMove=clicked;
+                    }
+                }
+            }else if(gameState==GAMEOVER){
+                setGameState(MENU);
+            }else if(gameState==MENU){
+                for(var i = 0; i < playerSelectables.length; i++){
+                    if(intersects(mouseX,mouseY,playerSelectables[i])){
+                        currentPlayerSelected=playerSelectables[i].selection;
+                    }
+                }
+                if(currentPlayerSelected!=-1){
+                    for(var i = 0; i < selectionSpots.length; i++){
+                        if(intersects(mouseX,mouseY,selectionSpots[i])){
+                            selectionSpots[i].current=currentPlayerSelected;
+                            if(selectionSpots[0].current != -1 && selectionSpots[1].current != -1){
+                                canStartGame=true;
+                            }
+                            currentPlayerSelected=-1;
+                        }
+                    }
+                }
+                if(canStartGame && mouseX>=selectionSpots[0].x+selectionSpots[0].w && mouseX<=selectionSpots[1].x && mouseY>=selectionSpots[0].y && mouseY <= selectionSpots[0].y+selectionSpots[0].h){
+                    players = [selectionSpots[1].current,selectionSpots[0].current];
+                    setGameState(PLAYING);
+                }
+            }
+        }
+        //Int[0,1],Int[0,9]->{x:Int,y:Int}
+        function getPosFromIndex(piece,index){
+            var remainder = index%3;
+            var quotient = (index-remainder)/3;
+            return {x:remainder*SIZE+TOPLEFT.x+textWidth(""+piece)/2,y:quotient*SIZE+TOPLEFT.y+TEXTSIZE};
+        }
+        //Int[0,1],Int[0,9]->void
+        function drawPiece(piece,index){
+            textSize(TEXTSIZE);
+            fill(piece==1?"#2061ab":"#db3f0b");
+            var pos = getPosFromIndex(piece,index);
+            text(piece,pos.x,pos.y);
+        }
+
+        //Board->void
+        function drawBoard(board){
+            fill(0,0,0);
+            stroke(0,0,0);
+            line(TOPLEFT.x+SIZE,TOPLEFT.y,TOPLEFT.x+SIZE,HEIGHT-TOPLEFT.y);
+            line(TOPLEFT.x+2*SIZE,TOPLEFT.y,TOPLEFT.x+2*SIZE,HEIGHT-TOPLEFT.y);
+            line(TOPLEFT.x,TOPLEFT.y+SIZE,WIDTH-TOPLEFT.x,TOPLEFT.y+SIZE);
+            line(TOPLEFT.x,TOPLEFT.y+2*SIZE,WIDTH-TOPLEFT.x,TOPLEFT.y+2*SIZE);
+            for(var i = 0; i < 9; i++){
+                if(board[i]!=-1){
+                    drawPiece(board[i],i);
+                }
+            }
+        }
+        //Board,Piece[0-1],Move[1-9]->Board
+        function getNextBoard(board, piece, move){
+            var nextBoard = [...board];
+            nextBoard[move]=piece;
+            return nextBoard;
+        }
+        //Board,Move -> Bool
+        function isValidMove(board,move){
+            return board[move]==-1;
+        }
+        //Board->Bool
+        function boardFull(board){
+            for(var i = 0; i < 9; i++){
+                if(board[i]==-1){
+                    return false;
+                }
+            }
+            return true;
+        }
+        //Board->Int
+        function getDeterminant(board){
+            return (board[0]*board[4]*board[8]+board[1]*board[5]*board[6]+board[2]*board[3]*board[7])-
+                    (board[6]*board[4]*board[2]+board[7]*board[5]*board[0]+board[8]*board[3]*board[1]);
+        }
+        //Board->Int[-1,1]
+        //0 means 0's win, 1 means 1's win. Must be a complete board.
+        function getWinner(board){
+            return getDeterminant(board)==0?0:1;
+        }
+        //Board,Int->Int
+        function randomValidMove(board){
+            var validMoves = [];
+            for(var i = 0; i < 9; i++){
+                if(isValidMove(board,i)){
+                    validMoves.push(i);
+                }
+            }
+            var choice = validMoves[randint(0,validMoves.length-1)];
+            // console.log(validMoves);
+            return choice;
+        }
+        /**
+         * Board tree format:
+         * {board:[0,0,0,0,0,0,0,0,0],
+         *  score:0,
+         *  index:0,
+         *  isTerminal:false,
+         *  children:[{
+         *      board:[1,0,0,0,0,0,0,0,0],
+         *      children:{}}]}
+         * etc.
+         * */
+        //Board,Piece,Int->BoardTree
+        function buildBoardTree(boardTree,piece,depth){
+            if(depth==0){
+                return boardTree;
+            }
+            for(var i = 0; i < 9; i++){
+                if(isValidMove(boardTree.board,i)){
+                    var nextBoard = getNextBoard(boardTree.board,piece,i);
+                    var nextBoardTree = {
+                        board:nextBoard,
+                        score:0,
+                        index:i,
+                        isTerminal:false,
+                        children:[]
+                    }
+                    buildBoardTree(nextBoardTree,1-piece,depth-1);
+                    boardTree.children.push(nextBoardTree);
+                }
+            }
+            return boardTree;
+        }
+        //Board,Int[0,1]->Int
+        function getValue(board,whosPlaying){
+            if(!boardFull(board)){
+                return 0;
+            }
+            return getWinner(board)==whosPlaying?1:-1;
+        }
+        //BoardTree[],(Int,Int->Bool)->BoardTree
+        function minOrMaxBoard(children,comp){
+            var maxValue = children[0];
+            for(var i = 1; i < children.length; i++){
+                if(comp(children[i].score,maxValue.score)){
+                    maxValue=children[i];
+                }
+            }
+            return maxValue;
+        }
+        //BoardTree,Int[0,1],Int[0,1]->void
+        function assignValues(boardTree,whosPlaying,whoseMove){
+            if(boardTree.children.length==0){
+                boardTree.isTerminal=true;
+                boardTree.score=getValue(boardTree.board,whosPlaying);
+            }else{
+                for(var i = 0; i < boardTree.children.length; i++){
+                    assignValues(boardTree.children[i],whosPlaying,1-whoseMove);
+                }
+                boardTree.score=minOrMaxBoard(boardTree.children,whoseMove==whosPlaying?(n1,n2)=>n1>n2:(n1,n2)=>n1<n2).score;
+                //To stop 1's from just giving up, we'll add 0.1 for each winning possibility.
+                //Since it's < 1/9, this will never outweigh an actual winning strategy.
+                if(boardTree.children[0].children.length > 0 && boardTree.children[0].children[0].isTerminal){
+                    for(var i = 0; i < boardTree.children.length; i++){
+                        if(boardTree.children[i].score>0){
+                            boardTree.score+=0.1;
+                        }
+                    }
+                }
+            }
+        }
+        //Board,Int[0,1],Int->Int[0,9]
+        function chooseAIMove(board,player,depth){
+            var boardTree = {
+                board:board,
+                index:0,
+                score:0,
+                isTerminal:false,
+                children:[]
+            };
+            buildBoardTree(boardTree,player,depth);
+            assignValues(boardTree,player,player);
+            if(boardTree.children.length==0){
+                return -1;
+            }
+            var maxValue = minOrMaxBoard(boardTree.children,(n1,n2)=>n1>n2);
+            if(boardTree.score>=1){
+                canWin=true;
+            }
+            return maxValue.index;
+        }
+
+        //Int,Int,{x:Int,y:Int,w:Int,h:Int}->Boolean
+        function intersects(x,y,rectangle){
+            return x>=rectangle.x && y>=rectangle.y && x<=rectangle.x+rectangle.w && y<=rectangle.y+rectangle.h;
+        }
+        
+        function drawPlayerSelectables(){
+            textSize(40);
+            for(var i = 0; i < playerSelectables.length; i++){
+                drawPlayerSelectable(playerSelectables[i]);
+            }
+        }
+
+
+        function drawPlayerSelectable(ss){
+            fill("#282828");
+            rect(ss.x,ss.y,ss.w,ss.h);
+            if(!ss.overrideColor && currentPlayerSelected==ss.selection){
+                fill("#e3d236");
+            }else{
+                fill("#ffffff");
+            }
+            text(ss.text,ss.x+ss.w/2-textWidth(ss.text)/2,ss.y+ss.h/2+10);
+        }
+
+        function drawSelectionSlots(){
+            //stroke should be black, fill should be background color.
+            for(var i = 0; i < selectionSpots.length; i++){
+                var ss = selectionSpots[i];
+                stroke(0);
+                fill('#feffe9');
+                rect(ss.x,ss.y,ss.w,ss.h);
+                if(ss.current!=-1){
+                    drawPlayerSelectable({
+                        x:ss.x+1,
+                        y:ss.y+1,
+                        w:ss.w-2,
+                        h:ss.h-2,
+                        text:playerSelectables[ss.current].text,
+                        selection:ss.current,
+                        overrideColor:true
+                    });
+                }
+            }
+        }
+    </script>
+</body>
